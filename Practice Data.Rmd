@@ -1,0 +1,65 @@
+---
+title: "Practice Data"
+author: "Heidi Golden"
+date: "2023-02-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# PLACE Packages here!!
+
+library(readr) #loads library to working space
+```
+
+FIRST: Create an outline -- what we want to do with this analysis
+
+## Introduction
+
+This data set contains North Pole Environmental Observatory Bottle Chemisty. Here's a link to the data:
+[LINK](https://arcticdata.io/catalog/view/doi:10.18739/A25T3FZ8X)
+
+## Read in the data
+```{r}
+bg_chem <- read_csv("data/BGchem2008data.csv")
+```
+
+```{r dataexploration, echo=FALSE}
+colnames(bg_chem)
+
+str(bg_chem)
+
+head(bg_chem)
+```
+
+
+## Analysis
+
+### Calculate summary statistics
+```{r stats}
+
+nitrate <- mean(bg_chem$NO3)
+nitrite <- mean(bg_chem$NO2)
+amm <- mean(bg_chem$NH4)
+phos <- mean(bg_chem$P)
+
+```
+
+
+### Calculate mean Redfield ratio
+
+```{r RedfieldRatio}
+ratio <- (nitrate + nitrite + amm)/phos
+# Now we can write text and call these numbers within the text..
+```
+
+The Redfield ratio in this dataset is approximately `r round(ratio)`
+
+
+### Plot the Redfiled ratios
+
+```{r PlotTheData, echo=FALSE}
+plot(bg_chem$P, bg_chem$NO2 + bg_chem$NO3 + bg_chem$NH4)
+```
+
