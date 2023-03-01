@@ -1,0 +1,233 @@
+---
+title: "Data Cleaning and Manipulation"
+author: "Heidi Golden"
+date: "2023-03-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(readr)
+```
+Warnings: Masked functions - These base r functions are overwitten by dplyr.
+#######################################
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+##########################################
+To unmask, dplry::filter(union) This 
+
+## Load data
+```{r}
+catch_original <- read.csv("https://knb.ecoinformatics.org/knb/d1/mn/v2/object/df35b.302.1")
+str(catch_original)
+```
+The select() command from dplyr package selects **columns**
+the filter() command  ... selects **row**
+```{r}
+# Remove the All and notesRegCode columns from the catch_original data frame
+catch_data <- catch_original %>% 
+  select(-All, -notesRegCode) 
+  #select(Region, Year, Chinook, Sockeye, Coho, Pink, Chum) # can reorder columns this way
+head(catch_data)
+glimpse(catch_data)
+
+```
+```{r}
+# Mutate chinook class from character to numeric
+catch_clean <- catch_data %>% 
+  mutate(Chinook = as.numeric(Chinook))
+ 
+# NAs introducted, Search for the NA value
+
+i <- which(is.na(catch_clean$Chinook))
+i # row 401 has NA
+
+catch_data[i, ]
+# located the odd value. It was a uppercase I
+# Assuming the I should be a 1. But should go to original data to make sure.
+
+catch_clean <- catch_data %>%
+  mutate(Chinook = if_else(Chinook == "I", "1", Chinook)) %>% 
+  mutate(Chinook = as.integer(Chinook))
+
+glimpse(catch_clean)
+
+```
+## Change shape of the data using pivot longer and pivot wider
+```{r}
+#pivot longer practice
+catch_long <- catch_clean %>% 
+  pivot_longer(cols = -c(Region, Year), names_to = "species", values_to = "catch")
+
+# Makes Species "long"
+# cols = .. These are the columns that are retained as is.
+# if year wasn't included in the cols = ... then the work year would appear in the species column with the year value.
+
+# names_to is what you call the column of column names.
+# values-to contains the values that were in the multiple species columns
+
+
+head(catch_long)
+```
+
+```{r pivot_wide}
+catch_wide <- catch_long %>% 
+  pivot_wider(names_from = species, values_from = catch)
+
+head(catch_wide)
+
+```
+
+## Practice Renaming
+```{r Rename}
+catch_long <- catch_long %>%
+  rename(catch_thousands = catch)
+
+head(catch_long)
+
+# Best to rename using the header names, not the column position (i.e. "Year" vs [ ,2])
+```
+## Adding columns with mutate function
+```{r}
+catch_long <- catch_long %>%
+  mutate(catch = catch_thousands * 1000)
+
+head(catch_long)
+
+# remove catch_thousands
+catch_long <- catch_long %>%
+  mutate(catch = catch_thousands * 1000) %>%
+  select(-catch_thousands)
+
+head(catch_long)
+```
+
+## Practice using group-by and summarise (or summarize) functions
+
+```{r group-by-summarize}
+mean_reagion <- catch_long %>%
+  group_by(Region) %>%
+  summarise(catch_mean = mean(catch))
+
+head(mean_reagion)
+
+```
+
+```{r summariseCountRegion}
+# summarize the number of observations (n) by region
+# why two pipe opperators? Bcs we are doing two processes.
+
+n_region <- catch_long %>% 
+  group_by(Region) %>%
+  summarize(n = n(),
+            total_catch = sum(catch))
+
+head(n_region)
+
+```
+
+```{r filter}
+ALU_catch <- catch_long %>%
+  filter(Region == c("ALU", "SSE") & species == c("Sockeye", "Pink"))
+
+# == is same as %in%
+
+head(ALU_catch)
+```
+
+## Arrange some Rows.
+```{r Arrange}
+mean_region_arrange <- catch_long %>% 
+  group_by(Region) %>% 
+  summarise(mean_catch = mean(catch)) %>% 
+  arrange(-mean_catch) # can also use arrange(desc(mean_catch)), instead of negative sign
+
+# arranges from smallest to largest
+# NEGATIVE sign give largest to smallerst
+
+head(mean_region_arrange)
+
+# see entire data set...
+mean_region_arrange
+```
+
+## Practice Joins
+```{r loadDefs}
+# loading in the region_defs .csv
+region_defs <- read.csv("https://knb.ecoinformatics.org/knb/d1/mn/v2/object/df35b.303.1") %>% 
+    select(code, mgmtArea)
+# just want to keep code and management area. No other columns.
+# SWEET!
+
+head(region_defs)
+```
+
+```{r Join}
+catch_joined <- left_join(catch_long, region_defs, by = c("Region" = "code"))
+
+head(catch_joined)
+```
+
+```{r Renaming}
+region_defs <- region_defs %>% 
+  rename(Region = code, Region_Name = mgmtArea)
+# Rename columns we want to join by so they are the same.
+# Rename switches after = to what's before =
+
+catch_joined <- left_join(catch_long, region_defs, by = c("Region"))
+
+head(catch_joined)
+
+```
+
+## Separate practice
+```{r Separate}
+sites_df <- data.frame(site = c("HAW-101",
+                                "HAW-103",
+                                "OAH-320",
+                                "OAH-219",
+                                "MAI-039"))
+
+
+# Separates values in a column based on a character removes the hyphens
+# Similar to text to columns in Excel !!! Yeah !!!
+sites_df %>% 
+  separate(site, c("island", "site_number"), "-") 
+
+```
+
+## Practice Uniting Columns
+```{r Unite}
+dates_df <- data.frame(year = c("1930",
+                                "1930",
+                                "1930"),
+                       month = c("12",
+                                "12",
+                                "12"),
+                       day = c("14",
+                               "15",
+                               "16"))
+
+dates_df %>% 
+  unite(date, year, month, day, sep = "-") %>%
+  mutate(date = as.Date(date))
+
+## Oh so TIDY !!
+## can also use lubridate package posi
+
+```
+
