@@ -9,4 +9,11 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Analysis Plan
+- [Introduction](Intro-to-rmarkdown.html)
+- Data Cleaning
+- Gap filling
+- Linear models
+- Data Visualization
+
 
