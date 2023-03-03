@@ -1,0 +1,430 @@
+---
+title: "Geospatial Analysis with SF"
+author: "Heidi Golden"
+date: "2023-03-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+See the BOOK: https://learning.nceas.ucsb.edu/2023-02-arctic/geospatial-vector-analysis.html#visualize-sf-objects-with-leaflet
+
+## Setup for geospatial analysis
+```{r LoadLibraries}
+library(sf) # Simple features - geospatial
+library(ggplot2)
+library(leaflet) # interactive maps
+library(scales)
+library(ggmap)
+library(dplyr)
+```
+Plot 
+```{r ReadingData}
+## Read in shapefile using sf
+ak_regions <- read_sf("data/ak_regions_simp.shp")
+
+plot(ak_regions)
+# these plots are need some work
+# distorted
+
+```
+```{r CheckClass_ak_regions}
+class(ak_regions)
+# it's an sf object 
+# but also has class tbl_df table and data frame.
+# can use data frame functions
+
+head(ak_regions)
+# multipolygon with numeric mgmt areas, etc.
+```
+Coordinate Systems:
+Unprojected = Geographic - 3D or globe (in angular units)
+Projected defines where the data is on the earth (in linear units, usually meters)
+
+ - Projection has lat and long represented as 2D on the earth
+ - Shows how the data is drawn on a flat surface
+ - For example how a peeled orange would look laid flat.
+
+
+Halina's Notes:
+CRS can be both unprojected and projected.
+Unprojected CRS aka a geographic coordinate system (GCS)
+- latitude and longitude references the earth as a 3D object
+- tells us *where* something is located on the globe
+- measured in angular units, i.e. degrees
+Projected CRS or projected coordinated system (PCS) or projection (for short)
+- latitude and longitude references the earth as a 2D object
+- tells us *how* to draw or create the representation on a flat surface
+- measured in linear units, i.e. meters
+
+How to pick a geo ref system??
+EPSG code = Coordinate Reference System (link in the BOOK) - provides a link to many, many codes
+can search a region and finde all the codes for that region.
+```{r CheckCoordSys}
+
+st_crs(ak_regions) # Checks coord sys
+
+# type of coord ref sys = GEOGCRS["WGS 84", which is an unprojected coordinate system.
+# Need to assign the appropriate coordinate system
+```
+
+```{r trasformCRS}
+# Pipe our data to the coordinate system
+ak_regions_3338 <- ak_regions %>%
+  st_transform(crs = 3338)
+## 3338 is the EPSG code NAD83/Alaska Albers, which is a good one for AK
+
+# Check if the transform worked
+st_crs(ak_regions_3338)
+# PROJCRS["NAD83 / Alaska Albers" - changed from GEO- to PROJ- CRS
+#   BASEGEOGCRS["NAD83"
+```
+
+```{r ReplotProjected}
+plot(ak_regions_3338)
+
+# Much better now.
+```
+
+## st and the tidyverse
+
+```{r sf_tidyverse}
+ak_regions_3338 %>%
+  select(region)
+
+# geometry object will "stick" with the data - signals we are working w spatial data
+
+```
+```{r Filtering}
+ak_regions_3338 %>%
+  filter(region == "Southeast")
+
+
+```
+
+## Spatial Joins
+
+```{r spatial_joins}
+# read in population data
+pop <- read.csv("data/alaska_population.csv")
+
+# what to determine # of people per region
+head(pop)
+class(pop)
+# need to turn pop into an sf object
+```
+
+### make 'pop' an sf object using 'st_as_sf()'
+
+```{r MakePopsf}
+# 4326 code is a default system
+# Assume 4326 when we do not know what the coord system is.
+# Very common is WGS 84
+
+pop_4326 <- st_as_sf(pop, 
+                  coords = c('lng', 'lat'),
+                  crs = 4326,
+                  remove = FALSE) # retains the original lat and lng columns !!!!!!!!
+
+head(pop_4326)
+
+# Added a new geometry column in addition to our lat, lng columns
+# Now we can join
+```
+
+## assign each city to a region using 'st_join'
+
+```{r WRongCOODs_NotMatchingFAILS}
+pop_joined <- st_join(pop_4326, ak_regions_3338, join = st_within)
+
+# ?st_join to see all different values for spatial joins that we can do.
+# we want st_within
+
+
+## Our EPSG codes do NOT MATCH. They must have the SAME Projection!
+```
+
+```{r CorrectingCOORDs}
+pop_3338 <- st_transform(pop_4326, crs = 3338) # changing the coord system
+
+st_crs(pop_3338)
+```
+
+
+```{r RedoJoin}
+pop_joined <- st_join(pop_3338, ak_regions_3338, join = st_within)
+
+head(pop_joined)
+```
+We assumed the populations were in 4326, and assumed they were in WGS, most GPS units use WGS83, but NAD83 is also used.
+
+CHECK the metadata to see what the GPS units were taken in.
+There are some packages that can check the coordinate system for you.
+
+If you don't know the spatial metadata
+see .prj file for projection.
+
+
+## Calculate the Total Population per Region Using 'group-by' and 'summarize()'
+```{r ChangeBackToDataframe}
+
+pop_region <- pop_joined %>% 
+  as.data.frame() %>% 
+  group_by(region) %>% 
+  summarise(total_pop = sum(population))
+
+head(pop_region)
+
+```
+
+
+```{r}
+# Left join the total population info with ...
+
+pop_region_3338 <- left_join(ak_regions_3338, pop_region, by = "region")
+
+## Joining with `by = join_by(region)`
+```
+
+
+
+```{r plotTotalPop_byregion}
+plot(pop_region_3338["total_pop"])
+```
+
+
+```{r PlotAgain}
+# using tidyverse on sf objects
+
+pop_mgmt_3338 <- pop_region_3338 %>% 
+  group_by(mgmt_area) %>% 
+  summarize(total_pop = sum(total_pop), do_union = FALSE)
+
+# 1. groups the population data by management area instead of region.
+# 2. sums the populations by those management areas
+# 3. do_union false retains the regional boundaries, so no merging of regional polygons.
+
+
+# shows that we can use group_by and summarize over geometries.
+# do_union if TRUE merges it merges the polygons (aka the geometries) 
+# do_union FALSE keeps the polygons separate
+
+plot(pop_mgmt_3338["total_pop"])
+
+```
+
+
+## Write spatial data as a file using 'write_sf()'
+
+```{r WritingToFile}
+# Creates a new .shp file
+write_sf(pop_region_3338, "data/ak_regions_population.shp", delete_layer = TRUE) 
+
+# delete_layer argument? If false, it will not let you overwrite the file.
+# when true it allows you to overwrite the same layer.
+
+################################################
+# The Manual for using tidyverse with sf objects
+#?st::tidyverse
+```
+
+
+## Visulaixe using ggplot
+
+```{r VisWithGGPLOY}
+ggplot(pop_region_3338) +
+  geom_sf(aes(fill = total_pop)) +
+  theme_bw() +
+  labs(fill = "Total Population") +
+  scale_fill_continuous(low = "khaki", high =  "firebrick", labels = comma) #scales package for colors
+
+# comma is a function from scales
+# scales is a companion to ggplot
+# labels = percent
+# labels = comma
+# Also money and other things for the labels/legend
+```
+
+## Adding other shape files, i.e., river boundaries
+
+
+```{r LoadRiversShapeFile}
+rivers_3338 <- read_sf("data/ak_rivers_simp.shp")
+st_crs(rivers_3338) # projection is in Albers
+
+
+#################################
+# There is a website where you can paste in the PROJCRS to find the correct projection
+# crs suggest R package to confirm the projection
+```
+
+```{r PlotANotherPlot}
+# Adding Rivers to the plot
+# using three different spatial data sets
+
+ggplot() +
+  geom_sf(data = pop_region_3338, aes(fill = total_pop)) +
+  geom_sf(data = rivers_3338, aes(size = StrOrder), color = "black") +
+  geom_sf(data = pop_3338, aes(), size = .5) +
+  scale_size(range = c(0.01, 0.2), guide = F) +
+  theme_bw() +
+  labs(fill = "Total Population") +
+  scale_fill_continuous(low = "khaki", high =  "firebrick", labels = comma)
+
+
+```
+
+## Incorporate base maps into static maps using ggmap
+```{r GGMAP}
+pop_3857 <- pop_3338 %>%
+  st_transform(crs = 3857) 
+
+# can render as raster
+# using stamen map time with CRS of 3857
+# transform bounding box so it can be in 3857
+```
+
+Define bounding box
+COOL
+```{r FunctionToDefineBoundingBox}
+# Define a function to fix the bbox to be in EPSG:3857
+# See https://github.com/dkahle/ggmap/issues/160#issuecomment-397055208
+ggmap_bbox_to_3857 <- function(map) {
+  if (!inherits(map, "ggmap")) stop("map must be a ggmap object")
+  # Extract the bounding box (in lat/lon) from the ggmap to a numeric vector, 
+  # and set the names to what sf::st_bbox expects:
+  map_bbox <- setNames(unlist(attr(map, "bb")), 
+                       c("ymin", "xmin", "ymax", "xmax"))
+  
+  # Coonvert the bbox to an sf polygon, transform it to 3857, 
+  # and convert back to a bbox (convoluted, but it works)
+  bbox_3857 <- st_bbox(st_transform(st_as_sfc(st_bbox(map_bbox, crs = 4326)), 3857))
+  
+  # Overwrite the bbox of the ggmap object with the transformed coordinates 
+  attr(map, "bb")$ll.lat <- bbox_3857["ymin"]
+  attr(map, "bb")$ll.lon <- bbox_3857["xmin"]
+  attr(map, "bb")$ur.lat <- bbox_3857["ymax"]
+  attr(map, "bb")$ur.lon <- bbox_3857["xmax"]
+  map
+}
+```
+
+Define the bounding box for S AK:
+```{r}
+bbox <- c(-170, 52, -130, 64)   # This is roughly southern Alaska
+
+# Get the basemap that we want using the bounding box defined above
+ak_map <- get_stamenmap(bbox, zoom = 4)
+
+# Use the function defined above o plot the map
+ak_map_3857 <- ggmap_bbox_to_3857(ak_map)
+
+```
+
+
+```{r PlotTheMap}
+# What is this.  inherit.aes FALSE??
+ggmap(ak_map_3857) + 
+  geom_sf(data = pop_3857, aes(color = population), inherit.aes = F) +
+  scale_color_continuous(low = "khaki", high =  "firebrick", labels = comma)
+
+#scale fill continuous ??
+
+
+```
+## Interactive Maps with leaflet
+leaflet projects the data for us, but need to tell it the projection to use.
+Shapefile must have 4326 code - WGS84
+3338 code - AK Albers
+```{r}
+epsg3338 <- leaflet::leafletCRS(
+  crsClass = "L.Proj.CRS",
+  code = "EPSG:3338",
+  proj4def =  "+proj=aea +lat_1=55 +lat_2=65 +lat_0=50 +lon_0=-154 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs",
+  resolutions = 2^(16:7))
+```
+
+
+```{r TransformToUnprojected}
+## Why does it need to be unprojected?
+
+pop_region_4326 <- pop_region_3338 %>% 
+  st_transform(crs = 4326)
+
+#. EPSG:4326 - World Geodetic System 1984, used in GPS
+
+```
+
+Create simple interactive map:
+```{r CreateInteractiveMap}
+m <- leaflet(options = leafletOptions(crs = epsg3338)) %>%
+        addPolygons(data = pop_region_4326, 
+                    fillColor = "gray",
+                    weight = 1)
+
+m
+```
+
+
+
+```{r Tweak1}
+pal <- colorNumeric(palette = "Reds", domain = pop_region_4326$total_pop)
+
+m <- leaflet(options = leafletOptions(crs = epsg3338)) %>%
+        addPolygons(data = pop_region_4326, 
+                    fillColor = ~pal(total_pop),
+                    weight = 1,
+                    color = "black",
+                    fillOpacity = 1,
+                    label = ~region) %>% 
+        addLegend(position = "bottomleft",
+                  pal = pal,
+                  values = range(pop_region_4326$total_pop),
+                  title = "Total Population")
+
+m
+```
+
+
+```{r Tweak2}
+pal <- colorNumeric(palette = "Reds", domain = pop_region_4326$total_pop)
+
+m <- leaflet(options = leafletOptions(crs = epsg3338)) %>%
+        addPolygons(data = pop_region_4326, 
+                    fillColor = ~pal(total_pop),
+                    weight = 1,
+                    color = "black",
+                    fillOpacity = 1) %>% 
+        addCircleMarkers(data = pop_4326,
+                         lat = ~lat,
+                         lng = ~lng,
+                         radius = ~log(population/500), # arbitrary scaling
+                         fillColor = "gray",
+                         fillOpacity = 1,
+                         weight = 0.25,
+                         color = "black",
+                         label = ~paste0(pop_4326$city, ", population ", comma(pop_4326$population))) %>%
+        addLegend(position = "bottomleft",
+                  pal = pal,
+                  values = range(pop_region_4326$total_pop),
+                  title = "Total Population")
+
+m
+```
+
+
+## Links for More Info:
+See the BOOK: https://learning.nceas.ucsb.edu/2023-02-arctic/geospatial-vector-analysis.html#visualize-sf-objects-with-leaflet
+Chapter 13 for more info on spatial mapping
+
+ALSO:
+mapview package, too, gives you an instant interactive map to view.
+Link: https://r-spatial.github.io/mapview/
+
+This was in the Slack channel:
+epsg3338 <- leaflet::leafletCRS(
+  crsClass = "L.Proj.CRS",
+  code = "EPSG:3338",
+  proj4def =  "+proj=aea +lat_1=55 +lat_2=65 +lat_0=50 +lon_0=-154 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs",
+  resolutions = 2^(16:7))

@@ -12,6 +12,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(readr) #loads library to working space
 ```
+See the BOOK: https://learning.nceas.ucsb.edu/2023-02-arctic/index.html
+
 
 FIRST: Create an outline -- what we want to do with this analysis
 

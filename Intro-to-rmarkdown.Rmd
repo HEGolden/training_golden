@@ -9,6 +9,8 @@ bibliography: references.bib
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+See the BOOK: https://learning.nceas.ucsb.edu/2023-02-arctic/index.html
+
 
 I'm typing some markdown text to try stuff.
 

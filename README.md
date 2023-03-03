@@ -1,5 +1,7 @@
 # training_golden
 Coursework for ADC Reproducible Course
+See the BOOK: https://learning.nceas.ucsb.edu/2023-02-arctic/index.html
+
 
 Adding info just for fun.
 

@@ -1,0 +1,89 @@
+---
+title: "Practice Data Cleaning and Manipulation"
+author: "Heidi Golden"
+date: "2023-03-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Chapter 12 in the Book
+https://learning.nceas.ucsb.edu/2023-02-arctic/exercise-cleaning-and-manipulating-data.html
+
+## Load Libraries
+```{r LoadLivrary}
+library(rvest)
+library(dplyr)
+library(readr)
+library(janitor)
+
+```
+
+
+## Scraping bird code species name
+```{r ScrapingBirdCode}
+webpage <- read_html("https://www.pwrc.usgs.gov/bbl/manual/speclist.cfm")
+
+tbls <- html_nodes(webpage, "table") %>% 
+    html_table(fill = TRUE)
+
+species <- tbls[[1]] %>% 
+    clean_names() %>% 
+    select(alpha_code, common_name) %>% 
+    mutate(alpha_code = tolower(alpha_code))
+
+```
+
+## Load the data from ADC by copy url
+```{r LoadFromURL}
+
+pred <- read_csv("https://arcticdata.io/metacat/d1/mn/v2/object/urn%3Auuid%3A9ffec04c-7e2d-41dd-9e88-b6c2e8c4375e")
+
+nest <- read_csv("https://arcticdata.io/metacat/d1/mn/v2/object/urn%3Auuid%3A982bd2fc-4edf-4da7-96ef-0d11b853102d")
+
+
+```
+## 3. Write function to translate spp codes into common names
+
+
+```{r WriteFunction}
+# checking what's in the nest spp names
+unique(nest$species) # nest$species = species$alpha_code
+
+code_names <- function(spp_df, code_df) {
+  join_names <- left_join(spp_df, code_df, by = c("species" = "alpha_code"))
+  return(join_names)
+}
+
+pred_names <- code_names(pred, species)
+nest_names <- code_names(nest, species)
+
+# join_names <- left_join(pred, species, by = join_by(species == alpha_code))
+# OR left_join(pred, species, by = c("species" = "alpha_code"))
+
+
+```
+
+## 4. Calculate total number of pred. by year and spp
+
+```{r SummariseNumPredByYr}
+pred_sum <- pred_names %>% 
+  group_by(year, common_name) %>% 
+  summarise(total = sum(count, na.rm = TRUE), .groups = "drop") %>% 
+  filter(!is.na(common_name)) %>% 
+  arrange(desc(total))
+
+```
+
+## 4.5. Plot results from above
+
+```{r PlotTotalPred}
+# Can get the code from the BOOK
+
+
+
+```
+
+## 5. Calculate total number of egg predated by year and spp
+## 6. Calculate total number of predators by year, join to summarize egg predation tabel and plot the results
